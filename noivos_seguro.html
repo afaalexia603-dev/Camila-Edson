@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#102f37"><title>Área reservada | Camila & Edson</title>
+<style>:root{font-family:system-ui,-apple-system,sans-serif;color:#16333b;background:#f6efe5}*{box-sizing:border-box}body{margin:0;min-height:100svh}header{background:#102f37;color:#fff;padding:22px 5%;display:flex;justify-content:space-between;align-items:center;gap:10px}header strong,h1{font-family:Georgia,serif;font-weight:normal}header strong{font-size:1.4rem}main{max-width:1050px;margin:0 auto;padding:38px 18px}h1{font-size:clamp(2rem,5vw,3.5rem);margin:0 0 12px}p{line-height:1.6}section.panel{background:#fffaf3;padding:clamp(22px,5vw,40px);border-radius:24px;box-shadow:0 15px 40px #102f3715}#login{max-width:460px;margin:40px auto}label{display:block;font-size:.85rem;font-weight:700;margin:18px 0 6px}input{width:100%;border:1px solid #cbd4d2;border-radius:12px;padding:14px;font-size:1rem;background:white;color:#16333b}button{background:#102f37;color:white;border:0;border-radius:999px;padding:13px 22px;font-size:.95rem;font-weight:700;cursor:pointer}button:disabled{opacity:.6;cursor:wait}button.secondary{background:transparent;border:1px solid #aab8bb;color:inherit}header button{border-color:#b9cacc!important;color:white!important}.muted{color:#61777a}.error{color:#a23842;min-height:1.5em}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:22px 0}.stat{padding:20px;background:#eaf0ed;border-radius:16px}.stat b{display:block;font-size:2rem}.stat small{color:#546a6b}.entry{padding:18px 0;border-bottom:1px solid #e5e9e6}.entry:last-child{border-bottom:0}.entry h3{margin:0 0 6px}.entry p{margin:5px 0;overflow-wrap:anywhere}.hidden{display:none!important}@media(max-width:550px){.stats{grid-template-columns:1fr 1fr}header strong{font-size:1.1rem}header button{padding:10px 14px}}</style></head>
+<body><header><strong>Camila <span style="color:#efa0a5">&</span> Edson</strong><button id="logout" class="secondary hidden" type="button">Sair</button></header><main>
+<section id="login" class="panel"><h1>Área dos noivos</h1><p class="muted">Acesso reservado a Camila e Edson.</p><form id="loginForm"><label for="email">E-mail</label><input id="email" type="email" autocomplete="username" required><label for="password">Senha</label><input id="password" type="password" autocomplete="current-password" required><p><button id="enter" type="submit">Entrar</button></p><p id="loginError" class="error" role="alert"></p></form></section>
+<section id="dashboard" class="panel hidden"><h1>Confirmações de presença</h1><p class="muted">Respostas registradas no Supabase. Dados disponíveis apenas para contas autorizadas pelas regras do banco.</p><div class="stats"><div class="stat"><b id="total">0</b><small>Respostas</small></div><div class="stat"><b id="yes">0</b><small>Confirmadas</small></div><div class="stat"><b id="no">0</b><small>Não confirmadas</small></div></div><button id="refresh" type="button">Atualizar respostas</button><p id="status" role="status" class="muted"></p><div id="entries"></div></section>
+</main><script>
+'use strict';
+const URL_BASE='https://ehuinevkvfrmramdztub.supabase.co';
+const KEY='sb_publishable_aEK9UAaBn3KScjDaYavVrQ_ImRlGHbM';
+const NOIVOS_UID='a431c44d-b331-40fd-abbd-7bb9bd2bf324';
+const $=id=>document.getElementById(id);
+let accessToken=null;
+let expiresAt=0;
+const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function showDashboard(show){$('login').classList.toggle('hidden',show);$('dashboard').classList.toggle('hidden',!show);$('logout').classList.toggle('hidden',!show)}
+$('loginForm').addEventListener('submit',async e=>{
+ e.preventDefault();$('loginError').textContent='';$('enter').disabled=true;
+ try{
+  const res=await fetch(URL_BASE+'/auth/v1/token?grant_type=password',{method:'POST',headers:{'apikey':KEY,'Content-Type':'application/json'},body:JSON.stringify({email:$('email').value.trim(),password:$('password').value})});
+  if(!res.ok)throw Error('E-mail ou senha inválidos, ou conta ainda não autorizada.');
+  const data=await res.json();
+   if(data.user?.id!==NOIVOS_UID)throw Error('Esta conta não tem permissão para acessar a área dos noivos.');
+   accessToken=data.access_token;expiresAt=Date.now()+(Number(data.expires_in)||3600)*1000;
+   $('password').value='';
+  // O login por si só não dá acesso: a política RLS no Supabase precisa permitir SELECT.
+  await loadRSVP();showDashboard(true);
+ }catch(err){accessToken=null;expiresAt=0;$('loginError').textContent=err.message}finally{$('enter').disabled=false}
+});
+async function loadRSVP(){
+ $('status').textContent='Carregando confirmações...';
+ const res=await fetch(URL_BASE+'/rest/v1/rsvp_confirmacoes?select=nome,telefone,presenca,mensagem&limit=1000',{headers:{'apikey':KEY,'Authorization':'Bearer '+accessToken}});
+ if(!res.ok){if(res.status===401||res.status===403)throw Error('Acesso não autorizado. Verifique as políticas RLS da tabela.');throw Error('Não foi possível consultar as confirmações ('+res.status+').')}
+ const rows=await res.json();
+ $('total').textContent=rows.length;
+ const yes=rows.filter(x=>['sim','confirmado','confirmada','vou','presente'].includes(String(x.presenca||'').trim().toLowerCase()));
+ const no=rows.filter(x=>['não','nao','não vou','nao vou','ausente'].includes(String(x.presenca||'').trim().toLowerCase()));
+ $('yes').textContent=yes.length;$('no').textContent=no.length;
+ $('entries').innerHTML=rows.length?rows.map(x=>`<article class="entry"><h3>${escapeHtml(x.nome)}</h3><p><strong>Presença:</strong> ${escapeHtml(x.presenca)}</p><p><strong>Contato:</strong> ${escapeHtml(x.telefone||'Não informado')}</p>${x.mensagem?`<p><strong>Mensagem:</strong> ${escapeHtml(x.mensagem)}</p>`:''}</article>`).join(''):'<p class="muted">Nenhuma confirmação disponível para esta conta.</p>';
+ $('status').textContent=rows.length+' resposta(s) carregada(s).';
+}
+$('refresh').addEventListener('click',async()=>{try{await loadRSVP()}catch(e){$('status').textContent=e.message}});
+$('logout').addEventListener('click',()=>{accessToken=null;expiresAt=0;$('entries').textContent='';$('password').value='';showDashboard(false)});
+</script></body></html>
