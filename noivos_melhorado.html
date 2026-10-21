@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#102f37"><title>Área reservada | Camila & Edson</title>
+<style>:root{font-family:system-ui,-apple-system,sans-serif;color:#16333b;background:#f6efe5}*{box-sizing:border-box}body{margin:0;min-height:100svh}header{background:#102f37;color:#fff;padding:22px 5%;display:flex;justify-content:space-between;align-items:center;gap:10px}header strong,h1{font-family:Georgia,serif;font-weight:normal}header strong{font-size:1.4rem}main{max-width:1050px;margin:0 auto;padding:38px 18px}h1{font-size:clamp(2rem,5vw,3.5rem);margin:0 0 12px}p{line-height:1.6}section.panel{background:#fffaf3;padding:clamp(22px,5vw,40px);border-radius:24px;box-shadow:0 15px 40px #102f3715}#login{max-width:460px;margin:40px auto}label{display:block;font-size:.85rem;font-weight:700;margin:18px 0 6px}input{width:100%;border:1px solid #cbd4d2;border-radius:12px;padding:14px;font-size:1rem;background:white;color:#16333b}button{background:#102f37;color:white;border:0;border-radius:999px;padding:13px 22px;font-size:.95rem;font-weight:700;cursor:pointer}button:disabled{opacity:.6;cursor:wait}button.secondary{background:transparent;border:1px solid #aab8bb;color:inherit}header button{border-color:#b9cacc!important;color:white!important}.muted{color:#61777a}.error{color:#a23842;min-height:1.5em}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:22px 0}.stat{padding:20px;background:#eaf0ed;border-radius:16px}.stat b{display:block;font-size:2rem}.stat small{color:#546a6b}.entry{padding:18px 0;border-bottom:1px solid #e5e9e6}.entry:last-child{border-bottom:0}.entry h3{margin:0 0 6px}.entry p{margin:5px 0;overflow-wrap:anywhere}.hidden{display:none!important}@media(max-width:550px){.stats{grid-template-columns:1fr 1fr}header strong{font-size:1.1rem}header button{padding:10px 14px}}
+.tools{display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin:20px 0}.tools .searchbox{flex:2 1 230px}.tools .filterbox{flex:1 1 165px}.tools label{margin:0 0 6px}.tools select{width:100%;border:1px solid #cbd4d2;border-radius:12px;padding:14px;background:#fff;color:#16333b;font-size:1rem}.tools button{min-height:48px}.toolbar-info{color:#61777a;font-size:.88rem}.entry .pill{display:inline-block;padding:5px 10px;border-radius:999px;background:#eaf0ed;font-size:.78rem;font-weight:700}.entry .pill.yes{background:#def1e7;color:#276547}.entry .pill.no{background:#fbe5e5;color:#8c3c45}button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #da7a80;outline-offset:2px}@media(max-width:550px){.tools{display:grid;grid-template-columns:1fr 1fr}.tools .searchbox{grid-column:1/-1}.tools button{width:100%}.tools .filterbox{grid-column:1/-1}}
+</style></head>
+<body><header><strong>Camila <span style="color:#efa0a5">&</span> Edson</strong><button id="logout" class="secondary hidden" type="button">Sair</button></header><main>
+<section id="login" class="panel"><h1>Área dos noivos</h1><p class="muted">Acesso reservado a Camila e Edson.</p><form id="loginForm"><label for="email">E-mail</label><input id="email" type="email" autocomplete="username" required><label for="password">Senha</label><input id="password" type="password" autocomplete="current-password" required><p><button id="enter" type="submit">Entrar</button></p><p id="loginError" class="error" role="alert"></p></form></section>
+<section id="dashboard" class="panel hidden"><h1>Confirmações de presença</h1><p class="muted">Respostas registradas no Supabase. Dados disponíveis apenas para contas autorizadas pelas regras do banco.</p><div class="stats"><div class="stat"><b id="total">0</b><small>Respostas</small></div><div class="stat"><b id="yes">0</b><small>Confirmadas</small></div><div class="stat"><b id="no">0</b><small>Não confirmadas</small></div></div><div class="tools"><div class="searchbox"><label for="search">Buscar convidado</label><input id="search" type="search" placeholder="Nome ou telefone" autocomplete="off"></div><div class="filterbox"><label for="filter">Filtrar presença</label><select id="filter"><option value="todos">Todos</option><option value="sim">Confirmados</option><option value="nao">Não confirmados</option><option value="outros">Outras respostas</option></select></div><button id="refresh" type="button">Atualizar</button><button id="export" class="secondary" type="button">Exportar CSV</button></div><p id="viewCount" class="toolbar-info" aria-live="polite"></p><p id="status" role="status" class="muted"></p><div id="entries"></div></section>
+</main><script>
+'use strict';
+const URL_BASE='https://ehuinevkvfrmramdztub.supabase.co';
+const KEY='sb_publishable_aEK9UAaBn3KScjDaYavVrQ_ImRlGHbM';
+const NOIVOS_UID='a431c44d-b331-40fd-abbd-7bb9bd2bf324';
+const $=id=>document.getElementById(id);
+let accessToken=null;
+let expiresAt=0;
+let allRows=[];
+const YES_VALUES=['sim','confirmado','confirmada','vou','presente'];
+const NO_VALUES=['não','nao','não vou','nao vou','ausente'];
+function presenceGroup(value){const normalized=String(value??'').trim().toLocaleLowerCase('pt-BR');return YES_VALUES.includes(normalized)?'sim':NO_VALUES.includes(normalized)?'nao':'outros'}
+function renderRows(){
+ const query=$('search').value.trim().toLocaleLowerCase('pt-BR');
+ const filter=$('filter').value;
+ const rows=allRows.filter(x=>(filter==='todos'||presenceGroup(x.presenca)===filter)&&(!query||String(x.nome??'').toLocaleLowerCase('pt-BR').includes(query)||String(x.telefone??'').toLocaleLowerCase('pt-BR').includes(query)));
+ $('viewCount').textContent=`Exibindo ${rows.length} de ${allRows.length} resposta(s).`;
+ $('entries').innerHTML=rows.length?rows.map(x=>{const group=presenceGroup(x.presenca);return `<article class="entry"><h3>${escapeHtml(x.nome)}</h3><p><span class="pill ${group==='outros'?'':group==='sim'?'yes':'no'}">${escapeHtml(x.presenca||'Não informada')}</span></p><p><strong>Contato:</strong> ${escapeHtml(x.telefone||'Não informado')}</p>${x.mensagem?`<p><strong>Mensagem:</strong> ${escapeHtml(x.mensagem)}</p>`:''}</article>`}).join(''):'<p class="muted">Nenhuma resposta encontrada para esta busca.</p>';
+}
+function exportCSV(){
+ if(!allRows.length){$('status').textContent='Não há respostas para exportar.';return}
+ const headings=['Nome','Telefone','Presença','Mensagem'];
+ const csvCell=v=>'"'+String(v??'').replace(/^[=+@\-\t\r]/, "'$&").replace(/"/g,'""')+'"';
+ const data=[headings,...allRows.map(x=>[x.nome,x.telefone,x.presenca,x.mensagem])];
+ const csv='\uFEFF'+data.map(row=>row.map(csvCell).join(';')).join('\r\n');
+ const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
+ const link=document.createElement('a');link.href=url;link.download='confirmacoes-camila-edson.csv';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+ $('status').textContent='Arquivo CSV gerado com as respostas carregadas.';
+}
+
+const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function showDashboard(show){$('login').classList.toggle('hidden',show);$('dashboard').classList.toggle('hidden',!show);$('logout').classList.toggle('hidden',!show)}
+$('loginForm').addEventListener('submit',async e=>{
+ e.preventDefault();$('loginError').textContent='';$('enter').disabled=true;
+ try{
+  const res=await fetch(URL_BASE+'/auth/v1/token?grant_type=password',{method:'POST',headers:{'apikey':KEY,'Content-Type':'application/json'},body:JSON.stringify({email:$('email').value.trim(),password:$('password').value})});
+  if(!res.ok)throw Error('E-mail ou senha inválidos, ou conta ainda não autorizada.');
+  const data=await res.json();
+   if(data.user?.id!==NOIVOS_UID)throw Error('Esta conta não tem permissão para acessar a área dos noivos.');
+   accessToken=data.access_token;expiresAt=Date.now()+(Number(data.expires_in)||3600)*1000;
+   $('password').value='';
+  // O login por si só não dá acesso: a política RLS no Supabase precisa permitir SELECT.
+  await loadRSVP();showDashboard(true);
+ }catch(err){accessToken=null;expiresAt=0;$('loginError').textContent=err.message}finally{$('enter').disabled=false}
+});
+async function loadRSVP(){
+ $('status').textContent='Carregando confirmações...';
+ const res=await fetch(URL_BASE+'/rest/v1/rsvp_confirmacoes?select=nome,telefone,presenca,mensagem&limit=1000',{headers:{'apikey':KEY,'Authorization':'Bearer '+accessToken}});
+ if(!res.ok){if(res.status===401||res.status===403)throw Error('Acesso não autorizado. Verifique as políticas RLS da tabela.');throw Error('Não foi possível consultar as confirmações ('+res.status+').')}
+   const rows=await res.json();
+  if(!Array.isArray(rows))throw Error('Resposta inesperada do Supabase.');
+  allRows=rows;
+  $('total').textContent=rows.length;
+  $('yes').textContent=rows.filter(x=>presenceGroup(x.presenca)==='sim').length;
+  $('no').textContent=rows.filter(x=>presenceGroup(x.presenca)==='nao').length;
+  renderRows();
+$('status').textContent=rows.length+' resposta(s) carregada(s).';
+}
+$('search').addEventListener('input',renderRows);
+$('filter').addEventListener('change',renderRows);
+$('export').addEventListener('click',exportCSV);
+$('refresh').addEventListener('click',async()=>{try{await loadRSVP()}catch(e){$('status').textContent=e.message}});
+$('logout').addEventListener('click',()=>{accessToken=null;expiresAt=0;allRows=[];$('search').value='';$('filter').value='todos';$('entries').textContent='';$('viewCount').textContent='';$('password').value='';showDashboard(false)});
+</script></body></html>
